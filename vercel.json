@@ -1,19 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/studio",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/studio/:path*",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/login",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/login/:path*",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
