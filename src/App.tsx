@@ -63,6 +63,26 @@ function getInitialPage() {
   return isStudioPath() ? 'editor' : 'home'
 }
 
+function getSessionFromUrlHash() {
+  const hash = window.location.hash.replace(/^#/, '')
+  if (!hash) return null
+
+  const params = new URLSearchParams(hash)
+  const accessToken = params.get('access_token')
+  const refreshToken = params.get('refresh_token')
+
+  if (!accessToken && !refreshToken) return null
+
+  return {
+    accessToken,
+    refreshToken,
+  }
+}
+
+function clearUrlHash() {
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+}
+
 function getAllText(projects: Project[]) {
   return projects
     .flatMap((project) => project.conversations)
@@ -115,15 +135,50 @@ function App() {
       setAuthLoading(false)
       return
     }
+    const client = supabase
 
-    supabase.auth.getSession().then(({ data }) => {
-      const session = data.session
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        setPage(getInitialPage())
+    async function loadSession() {
+      const hashSession = getSessionFromUrlHash()
+
+      try {
+        if (hashSession) {
+          if (!hashSession.accessToken || !hashSession.refreshToken) {
+            throw new Error('Could not finish sign in. Please try logging in again.')
+          }
+
+          const { data, error } = await client.auth.setSession({
+            access_token: hashSession.accessToken,
+            refresh_token: hashSession.refreshToken,
+          })
+
+          if (error) throw error
+
+          setUser(data.session?.user ?? null)
+          if (data.session?.user) {
+            setPage(getInitialPage())
+          }
+          clearUrlHash()
+          return
+        }
+
+        const { data, error } = await client.auth.getSession()
+        if (error) throw error
+
+        const session = data.session
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          setPage(getInitialPage())
+        }
+      } catch (error) {
+        setUser(null)
+        setAuthError(error instanceof Error ? error.message : 'Could not finish sign in.')
+        if (hashSession) clearUrlHash()
+      } finally {
+        setAuthLoading(false)
       }
-      setAuthLoading(false)
-    })
+    }
+
+    loadSession()
 
     const {
       data: { subscription },
