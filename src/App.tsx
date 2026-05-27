@@ -26,6 +26,7 @@ import {
   type Conversation,
   type DatasetMessage,
   type Project,
+  type PublicDataset,
   type Role,
 } from './lib/studio-data'
 import { AccountPage } from './pages/AccountPage'
@@ -38,10 +39,10 @@ import { StudioHomePage } from './pages/StudioHomePage'
 import { StudioPlaceholderPage } from './pages/StudioPlaceholderPage'
 
 const fallbackPublicDatasets = [
-  { name: 'WVY Dataset', creator: 'Spaceman' },
-  { name: 'Savvy Dataset', creator: 'StarPower Tech' },
-  { name: 'Creative Thinker Dataset', creator: 'User 304' },
-  { name: 'Spaceman Dataset', creator: 'Spaceman' },
+  { id: 'public-wvy', name: 'WVY Dataset', description: 'A public community dataset.', creator: 'Spaceman' },
+  { id: 'public-savvy', name: 'Savvy Dataset', description: 'Shared training examples from StarPower Tech.', creator: 'StarPower Tech' },
+  { id: 'public-creative-thinker', name: 'Creative Thinker Dataset', description: 'Prompts and responses for creative work.', creator: 'User 304' },
+  { id: 'public-spaceman', name: 'Spaceman Dataset', description: 'A public dataset from Spaceman.', creator: 'Spaceman' },
 ]
 
 type AppRoute = 'landing' | StudioRoute
@@ -104,7 +105,7 @@ function App() {
   const [saveStatus, setSaveStatus] = useState('Saved')
   const [route, setRoute] = useState<AppRoute>(() => getAppRoute())
   const [projects, setProjects] = useState<Project[]>(starterProjects)
-  const [publicProjects, setPublicProjects] = useState(fallbackPublicDatasets)
+  const [publicProjects, setPublicProjects] = useState<PublicDataset[]>(fallbackPublicDatasets)
   const [activeProjectId, setActiveProjectId] = useState(starterProjects[0].id)
   const [activeConversationId, setActiveConversationId] = useState(starterProjects[0].conversations[0].id)
   const [nextRole, setNextRole] = useState<Role>('user')
@@ -329,6 +330,18 @@ function App() {
   const activeConversation =
     activeProject?.conversations.find((conversation) => conversation.id === activeConversationId) ??
     activeProject?.conversations[0]
+  const publicOwnedProjects = projects
+    .filter((project) => project.isPublic)
+    .map((project) => ({
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      creator: project.creator,
+    }))
+  const visiblePublicProjects = [
+    ...publicOwnedProjects,
+    ...publicProjects.filter((project) => !publicOwnedProjects.some((ownedProject) => ownedProject.id === project.id)),
+  ]
 
   function updateActiveProject(updater: (project: Project) => Project) {
     setProjects((currentProjects) =>
@@ -412,6 +425,7 @@ function App() {
     const project: Project = {
       id: makeId(),
       name: `Dataset Project ${projects.length + 1}`,
+      description: '',
       creator: getCreatorName(user),
       isPublic: false,
       conversations: [{ id: makeId(), title: 'Conversation 1', messages: [] }],
@@ -441,10 +455,22 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
-  function toggleProjectVisibility(projectId: string, isPublic: boolean) {
+  function publishProject(projectId: string, details: { name: string; description: string; isPublic: boolean }) {
     setProjects((currentProjects) =>
-      currentProjects.map((project) => (project.id === projectId ? { ...project, isPublic } : project)),
+      currentProjects.map((project) => (project.id === projectId ? { ...project, ...details } : project)),
     )
+    setPublicProjects((currentProjects) => {
+      if (!details.isPublic) return currentProjects.filter((project) => project.id !== projectId)
+
+      const nextProject: PublicDataset = {
+        id: projectId,
+        name: details.name,
+        description: details.description,
+        creator: projects.find((project) => project.id === projectId)?.creator ?? getCreatorName(user),
+      }
+      const otherProjects = currentProjects.filter((project) => project.id !== projectId)
+      return [nextProject, ...otherProjects]
+    })
   }
 
   async function handleUsernameCheck(username: string) {
@@ -588,7 +614,7 @@ function App() {
           saveStatus={saveStatus}
           saveError={saveError}
           navigate={navigateStudioRoute}
-          toggleProjectVisibility={toggleProjectVisibility}
+          publishProject={publishProject}
           addMessage={addMessage}
           insertMessageAfter={insertMessageAfter}
           updateMessage={updateMessage}
@@ -598,7 +624,7 @@ function App() {
         />
       )}
       {route === 'jupyter-notebook' && <JupyterNotebookPage />}
-      {route === 'public' && <PublicPage datasets={publicProjects} />}
+      {route === 'public' && <PublicPage datasets={visiblePublicProjects} />}
       {route === 'projects' && <ProjectsPage projects={projects} openProject={openEditor} createProject={createProject} />}
       {route === 'account' && (
         <AccountPage

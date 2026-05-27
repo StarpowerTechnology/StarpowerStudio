@@ -19,15 +19,24 @@ export type Conversation = {
 export type Project = {
   id: string
   name: string
+  description: string
   creator: string
   isPublic: boolean
   conversations: Conversation[]
+}
+
+export type PublicDataset = {
+  id: string
+  name: string
+  description: string
+  creator: string
 }
 
 type ProjectRow = {
   id: string
   user_id: string
   name: string
+  description: string
   creator: string
   is_public: boolean
   created_at?: string
@@ -69,6 +78,7 @@ export const starterProjects: Project[] = [
   {
     id: '11111111-1111-4111-8111-111111111111',
     name: 'StarPower Training Dataset',
+    description: 'A starter dataset for training StarPower models.',
     creator: 'StarPower Tech',
     isPublic: false,
     conversations: [
@@ -101,6 +111,7 @@ export function loadLocalProjects() {
     return parsed.map((project) => ({
       id: makeId(),
       name: project.name ?? 'Imported Dataset Project',
+      description: project.description ?? '',
       creator: project.creator ?? 'StarPower Tech',
       isPublic: Boolean(project.isPublic),
       conversations:
@@ -125,6 +136,7 @@ export function createStarterProjects(creator: string): Project[] {
     {
       id: makeId(),
       name: 'StarPower Training Dataset',
+      description: 'A starter dataset for training StarPower models.',
       creator,
       isPublic: false,
       conversations: [
@@ -153,7 +165,7 @@ export async function fetchOwnedProjects(userId: string) {
   const client = requireSupabase()
   const { data: projectRows, error: projectsError } = await client
     .from('projects')
-    .select('id,user_id,name,creator,is_public,created_at,updated_at')
+    .select('id,user_id,name,description,creator,is_public,created_at,updated_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
@@ -167,7 +179,7 @@ export async function fetchPublicProjects() {
   const client = requireSupabase()
   const { data, error } = await client
     .from('projects')
-    .select('id,user_id,name,creator,is_public,created_at,updated_at')
+    .select('id,user_id,name,description,creator,is_public,created_at,updated_at')
     .eq('is_public', true)
     .order('updated_at', { ascending: false })
     .limit(24)
@@ -177,6 +189,7 @@ export async function fetchPublicProjects() {
   return (data as ProjectRow[] | null)?.map((project) => ({
     id: project.id,
     name: project.name,
+    description: project.description,
     creator: project.creator,
   })) ?? []
 }
@@ -226,6 +239,7 @@ async function fetchProjectsByRows(projectRows: ProjectRow[]) {
   return projectRows.map((project) => ({
     id: project.id,
     name: project.name,
+    description: project.description,
     creator: project.creator,
     isPublic: project.is_public,
     conversations: conversationsByProject.get(project.id) ?? [],
@@ -238,6 +252,7 @@ export async function syncOwnedProjects(userId: string, projects: Project[]) {
     id: project.id,
     user_id: userId,
     name: project.name,
+    description: project.description,
     creator: project.creator,
     is_public: project.isPublic,
   }))

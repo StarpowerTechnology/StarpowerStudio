@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ArrowDown, ArrowUp, Download, Edit3, Menu, Plus, Send, Share2, Trash2, X } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
 import { StudioSidebar, type StudioRoute } from '../components/studio/StudioSidebar'
+import { Input } from '../components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Textarea } from '../components/ui/textarea'
 import type { Conversation, DatasetMessage, Project, Role } from '../lib/studio-data'
@@ -18,7 +19,10 @@ type DatasetEditorPageProps = {
   saveStatus: string
   saveError: string
   navigate: (route: StudioRoute) => void
-  toggleProjectVisibility: (projectId: string, isPublic: boolean) => void
+  publishProject: (
+    projectId: string,
+    details: { name: string; description: string; isPublic: boolean },
+  ) => void
   addMessage: () => void
   insertMessageAfter: (messageId: string) => void
   updateMessage: (messageId: string, patch: Partial<DatasetMessage>) => void
@@ -37,7 +41,7 @@ export function DatasetEditorPage({
   saveStatus,
   saveError,
   navigate,
-  toggleProjectVisibility,
+  publishProject,
   addMessage,
   insertMessageAfter,
   updateMessage,
@@ -47,23 +51,49 @@ export function DatasetEditorPage({
 }: DatasetEditorPageProps) {
   const messageEndRef = useRef<HTMLDivElement>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [publishOpen, setPublishOpen] = useState(false)
+  const [publishName, setPublishName] = useState(activeProject.name)
+  const [publishDescription, setPublishDescription] = useState(activeProject.description)
+  const [publishVisibility, setPublishVisibility] = useState<'public' | 'private'>(
+    activeProject.isPublic ? 'public' : 'private',
+  )
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [activeConversation.id, activeConversation.messages.length])
 
   useEffect(() => {
-    if (!sidebarOpen) return
+    if (!sidebarOpen && !publishOpen) return
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setSidebarOpen(false)
+        setPublishOpen(false)
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [sidebarOpen])
+  }, [publishOpen, sidebarOpen])
+
+  function openPublishDialog() {
+    setPublishName(activeProject.name)
+    setPublishDescription(activeProject.description)
+    setPublishVisibility(activeProject.isPublic ? 'public' : 'private')
+    setPublishOpen(true)
+  }
+
+  function handlePublishSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const nextName = publishName.trim() || activeProject.name
+    publishProject(activeProject.id, {
+      name: nextName,
+      description: publishDescription.trim(),
+      isPublic: publishVisibility === 'public',
+    })
+    setPublishOpen(false)
+    navigate('public')
+  }
 
   return (
     <section className="grid h-dvh min-h-0 grid-rows-[auto_1fr_auto] overflow-hidden bg-black">
@@ -92,7 +122,7 @@ export function DatasetEditorPage({
           <Button
             className="px-3"
             variant={activeProject.isPublic ? 'default' : 'outline'}
-            onClick={() => toggleProjectVisibility(activeProject.id, !activeProject.isPublic)}
+            onClick={openPublishDialog}
           >
             <Share2 /> <span>{activeProject.isPublic ? 'Public' : 'Private'}</span>
           </Button>
@@ -129,6 +159,76 @@ export function DatasetEditorPage({
               onNavigate={() => setSidebarOpen(false)}
             />
           </aside>
+        </div>
+      )}
+
+      {publishOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4">
+          <button
+            className="absolute inset-0 bg-black/75"
+            type="button"
+            aria-label="close publish dialog"
+            onClick={() => setPublishOpen(false)}
+          />
+          <form
+            className="relative z-10 grid w-full max-w-lg gap-5 rounded-md border border-white/35 bg-black p-5 shadow-2xl sm:p-6"
+            onSubmit={handlePublishSubmit}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="publish-dataset-title"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="publish-dataset-title" className="text-2xl font-semibold">
+                  Publish dataset
+                </h2>
+                <p className="mt-1 text-sm text-white/55">Add the details people will see on the Public page.</p>
+              </div>
+              <Button type="button" variant="ghost" size="icon" onClick={() => setPublishOpen(false)} aria-label="close publish dialog">
+                <X />
+              </Button>
+            </div>
+
+            <label className="grid gap-2 text-sm font-medium">
+              Project Name
+              <Input value={publishName} onChange={(event) => setPublishName(event.target.value)} />
+            </label>
+
+            <label className="grid gap-2 text-sm font-medium">
+              Description
+              <Textarea
+                className="min-h-28 resize-none"
+                value={publishDescription}
+                onChange={(event) => setPublishDescription(event.target.value)}
+              />
+            </label>
+
+            <fieldset className="grid gap-2">
+              <legend className="text-sm font-medium">Public / Private</legend>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={publishVisibility === 'public' ? 'default' : 'outline'}
+                  onClick={() => setPublishVisibility('public')}
+                  aria-pressed={publishVisibility === 'public'}
+                >
+                  Public
+                </Button>
+                <Button
+                  type="button"
+                  variant={publishVisibility === 'private' ? 'default' : 'outline'}
+                  onClick={() => setPublishVisibility('private')}
+                  aria-pressed={publishVisibility === 'private'}
+                >
+                  Private
+                </Button>
+              </div>
+            </fieldset>
+
+            <Button type="submit" className="justify-self-end">
+              Publish
+            </Button>
+          </form>
         </div>
       )}
 
