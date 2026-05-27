@@ -9,6 +9,7 @@ type LoginPageProps = {
   onEmailLogin: (email: string, password: string) => Promise<void>
   onEmailSignup: (email: string, password: string) => Promise<void>
   onGoogleLogin: () => Promise<void>
+  onSkipLogin: () => void
 }
 
 export function LoginPage({
@@ -16,6 +17,7 @@ export function LoginPage({
   onEmailLogin,
   onEmailSignup,
   onGoogleLogin,
+  onSkipLogin,
 }: LoginPageProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -78,6 +80,9 @@ export function LoginPage({
             disabled={loadingAction !== null}
           >
             <UserCircle /> {loadingAction === 'google' ? 'Opening Google...' : 'Continue with Google'}
+          </Button>
+          <Button className="h-12 text-base" variant="outline" onClick={onSkipLogin} disabled={loadingAction !== null}>
+            Skip login
           </Button>
         </div>
       </section>
