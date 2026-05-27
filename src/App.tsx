@@ -92,11 +92,17 @@ function App() {
 
   useEffect(() => {
     if (!supabase) {
+      setAuthLoading(false)
       return
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null)
+      const session = data.session
+      setUser(session?.user ?? null)
+      // If user exists, set page to home after auth loads
+      if (session?.user) {
+        setPage('home')
+      }
       setAuthLoading(false)
     })
 
@@ -107,6 +113,9 @@ function App() {
       setAuthError('')
       // Set page to home when user logs in
       if (session?.user) {
+        setPage('home')
+      } else {
+        // Reset page when signing out
         setPage('home')
       }
     })
