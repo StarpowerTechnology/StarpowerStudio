@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
-import { Image, LogIn, Mail, UserPlus } from 'lucide-react'
+import { Image, KeyRound, LogIn, LogOut, Mail, UserPlus } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -21,11 +21,13 @@ type AccountPageProps = {
   onEmailLogin: (identifier: string, password: string) => Promise<void>
   onEmailSignup: (username: string, email: string, password: string) => Promise<void>
   onGoogleLogin: () => Promise<void>
+  onChangePassword: (password: string) => Promise<void>
   onSaveUsername: (username: string) => Promise<void>
   onSignOut: () => Promise<void>
 }
 
 type AccountMode = 'closed' | 'login' | 'signup'
+type LoggedInMode = 'closed' | 'password'
 
 export function AccountPage({
   authError,
@@ -37,21 +39,29 @@ export function AccountPage({
   onEmailLogin,
   onEmailSignup,
   onGoogleLogin,
+  onChangePassword,
   onSaveUsername,
   onSignOut,
 }: AccountPageProps) {
   const [mode, setMode] = useState<AccountMode>('closed')
+  const [loggedInMode, setLoggedInMode] = useState<LoggedInMode>('closed')
   const [identifier, setIdentifier] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
   const [signupUsername, setSignupUsername] = useState('')
   const [signupEmail, setSignupEmail] = useState('')
   const [signupPassword, setSignupPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordStatus, setPasswordStatus] = useState('')
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null)
   const [usernameStatus, setUsernameStatus] = useState('')
   const [usernamePrompt, setUsernamePrompt] = useState('')
-  const [loadingAction, setLoadingAction] = useState<'login' | 'signup' | 'google' | 'username' | null>(null)
+  const [loadingAction, setLoadingAction] = useState<'login' | 'signup' | 'google' | 'username' | 'password' | null>(
+    null,
+  )
 
   const username = getProfileUsername(user, profile)
+  const email = profile?.email || user?.email || 'No email connected.'
   const photoUrl = getProfilePhoto(user, profile)
   const needsUsername = Boolean(user) && !profile?.username
 
@@ -137,6 +147,32 @@ export function AccountPage({
     }
   }
 
+  async function submitPasswordChange() {
+    if (newPassword.length < 6) {
+      setPasswordStatus('Password must be at least 6 characters.')
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordStatus('Passwords do not match.')
+      return
+    }
+
+    setLoadingAction('password')
+    setPasswordStatus('')
+    try {
+      await onChangePassword(newPassword)
+      setNewPassword('')
+      setConfirmPassword('')
+      setLoggedInMode('closed')
+      setPasswordStatus('Password updated.')
+    } catch (error) {
+      setPasswordStatus(error instanceof Error ? error.message : 'Could not update password.')
+    } finally {
+      setLoadingAction(null)
+    }
+  }
+
   if (user) {
     return (
       <section className="flex min-h-screen flex-col p-6 md:p-10">
@@ -145,7 +181,7 @@ export function AccountPage({
         </div>
 
         <div className="flex flex-1 flex-col">
-          <div className="grid max-w-2xl gap-6">
+          <div className="grid max-w-3xl gap-5">
             <div className="flex items-center gap-5">
               <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-white/25 bg-white/5">
                 {photoUrl ? (
@@ -155,26 +191,74 @@ export function AccountPage({
                 )}
               </div>
               <div>
-                <h2 className="text-3xl font-semibold">{username}</h2>
-                <p className="mt-2 text-sm text-white/60">Cloud sync is {saveStatus.toLowerCase()}.</p>
+                <p className="text-sm uppercase text-white/50">Logged in account</p>
+                <h2 className="mt-1 text-3xl font-semibold">{username}</h2>
+                <p className="mt-2 text-sm text-white/60">{email}</p>
               </div>
             </div>
 
+            <Card className="divide-y divide-white/10">
+              <AccountDetail label="Username" value={username} />
+              <AccountDetail label="Email" value={email} />
+              <AccountDetail label="Bio" value={profile?.bio || 'No bio yet.'} />
+            </Card>
+
             <Card>
               <CardHeader>
-                <CardTitle className="text-xl">Bio</CardTitle>
+                <CardTitle className="flex items-center gap-3 text-xl">
+                  <KeyRound className="h-5 w-5" />
+                  Change password
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="min-h-20 text-base text-white/75">{profile?.bio || 'No bio yet.'}</p>
+              <CardContent className="grid gap-4">
+                <Button
+                  className="h-12 text-base"
+                  variant="outline"
+                  onClick={() => setLoggedInMode(loggedInMode === 'password' ? 'closed' : 'password')}
+                >
+                  Change password
+                </Button>
+                {loggedInMode === 'password' && (
+                  <div className="grid gap-4">
+                    <Input
+                      aria-label="new password"
+                      autoComplete="new-password"
+                      placeholder="new password"
+                      type="password"
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                    />
+                    <Input
+                      aria-label="confirm new password"
+                      autoComplete="new-password"
+                      placeholder="confirm new password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') submitPasswordChange()
+                      }}
+                    />
+                    <Button
+                      onClick={submitPasswordChange}
+                      disabled={loadingAction !== null || !newPassword || !confirmPassword}
+                    >
+                      {loadingAction === 'password' ? 'Updating password...' : 'Save new password'}
+                    </Button>
+                  </div>
+                )}
+                {passwordStatus && <p className="text-sm text-white/60">{passwordStatus}</p>}
               </CardContent>
             </Card>
+
+            <p className="text-sm text-white/50">Cloud sync is {saveStatus.toLowerCase()}.</p>
 
             {profileError && <Card className="border-white/40 p-3 text-sm text-white/70">{profileError}</Card>}
           </div>
 
           <div className="mt-auto pt-10">
             <Button className="h-12 min-w-40 text-base" variant="outline" onClick={onSignOut}>
-              Log out
+              <LogOut /> Logout
             </Button>
           </div>
         </div>
@@ -321,5 +405,19 @@ export function AccountPage({
         )}
       </div>
     </section>
+  )
+}
+
+type AccountDetailProps = {
+  label: string
+  value: string
+}
+
+function AccountDetail({ label, value }: AccountDetailProps) {
+  return (
+    <div className="grid gap-2 p-5 sm:grid-cols-[160px_1fr] sm:items-start">
+      <div className="text-sm font-medium uppercase text-white/50">{label}</div>
+      <div className="break-words text-base text-white">{value}</div>
+    </div>
   )
 }

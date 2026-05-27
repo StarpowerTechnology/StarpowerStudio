@@ -596,6 +596,15 @@ function App() {
     if (error) setAuthError(error.message)
   }
 
+  async function handleChangePassword(password: string) {
+    if (!supabase) {
+      throw new Error('Supabase is not configured.')
+    }
+
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) throw error
+  }
+
   async function handleSaveUsername(username: string) {
     if (!user) return
     setProfileError('')
@@ -687,6 +696,7 @@ function App() {
           onEmailLogin={handleEmailLogin}
           onEmailSignup={handleEmailSignup}
           onGoogleLogin={handleGoogleLogin}
+          onChangePassword={handleChangePassword}
           onSaveUsername={handleSaveUsername}
           onSignOut={handleSignOut}
         />
