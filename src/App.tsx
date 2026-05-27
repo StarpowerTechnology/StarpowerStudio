@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { LoadingOverlay, LoadingScreen } from './components/common/LoadingScreen'
 import { StudioLayout } from './components/studio/StudioLayout'
@@ -27,7 +27,6 @@ import {
   type DatasetMessage,
   type Project,
   type Role,
-  type StatsMode,
 } from './lib/studio-data'
 import { AccountPage } from './pages/AccountPage'
 import { DatasetEditorPage } from './pages/DatasetEditorPage'
@@ -94,25 +93,6 @@ function clearUrlHash() {
   window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
 }
 
-function getAllText(projects: Project[]) {
-  return projects
-    .flatMap((project) => project.conversations)
-    .flatMap((conversation) => conversation.messages)
-    .map((message) => message.content)
-    .join(' ')
-}
-
-function getWords(text: string) {
-  return text.toLowerCase().match(/[a-z0-9']+/g) ?? []
-}
-
-function countUsage(items: string[]) {
-  return items.reduce<Record<string, number>>((accumulator, item) => {
-    accumulator[item] = (accumulator[item] ?? 0) + 1
-    return accumulator
-  }, {})
-}
-
 function App() {
   const [user, setUser] = useState<User | null>(null)
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured)
@@ -129,7 +109,6 @@ function App() {
   const [activeConversationId, setActiveConversationId] = useState(starterProjects[0].conversations[0].id)
   const [nextRole, setNextRole] = useState<Role>('user')
   const [draft, setDraft] = useState('')
-  const [statsMode, setStatsMode] = useState<StatsMode>('words')
   const dataReadyRef = useRef(false)
 
   function navigateRoute(nextRoute: AppRoute, historyMode: 'push' | 'replace' = 'push') {
@@ -351,19 +330,6 @@ function App() {
     activeProject?.conversations.find((conversation) => conversation.id === activeConversationId) ??
     activeProject?.conversations[0]
 
-  const stats = useMemo(() => {
-    const text = getAllText(projects)
-    const words = getWords(text)
-    const letters = text.toLowerCase().replace(/[^a-z0-9]/g, '').split('')
-
-    return {
-      totalCharacters: text.replace(/\s/g, '').length,
-      totalWords: words.length,
-      words: Object.entries(countUsage(words)).sort((a, b) => b[1] - a[1]),
-      letters: Object.entries(countUsage(letters)).sort((a, b) => b[1] - a[1]),
-    }
-  }, [projects])
-
   function updateActiveProject(updater: (project: Project) => Project) {
     setProjects((currentProjects) =>
       currentProjects.map((project) => (project.id === activeProjectId ? updater(project) : project)),
@@ -385,42 +351,6 @@ function App() {
     setActiveProjectId(project.id)
     setActiveConversationId(project.conversations[0]?.id ?? '')
     navigateRoute('dataset-editor')
-  }
-
-  function addConversation() {
-    const newConversation: Conversation = {
-      id: makeId(),
-      title: `Conversation ${activeProject.conversations.length + 1}`,
-      messages: [],
-    }
-
-    updateActiveProject((project) => ({
-      ...project,
-      conversations: [...project.conversations, newConversation],
-    }))
-    setActiveConversationId(newConversation.id)
-  }
-
-  function renameConversation(conversationId: string) {
-    const conversation = activeProject.conversations.find((item) => item.id === conversationId)
-    const title = window.prompt('Rename conversation', conversation?.title ?? '')
-    if (!title?.trim()) return
-
-    updateActiveProject((project) => ({
-      ...project,
-      conversations: project.conversations.map((item) =>
-        item.id === conversationId ? { ...item, title: title.trim() } : item,
-      ),
-    }))
-  }
-
-  function deleteConversation(conversationId: string) {
-    if (activeProject.conversations.length === 1) return
-    const nextConversations = activeProject.conversations.filter((conversation) => conversation.id !== conversationId)
-    updateActiveProject((project) => ({ ...project, conversations: nextConversations }))
-    if (conversationId === activeConversationId) {
-      setActiveConversationId(nextConversations[0]?.id ?? '')
-    }
   }
 
   function addMessage() {
@@ -655,15 +585,9 @@ function App() {
           setNextRole={setNextRole}
           draft={draft}
           setDraft={setDraft}
-          stats={stats}
-          statsMode={statsMode}
-          setStatsMode={setStatsMode}
           saveStatus={saveStatus}
           saveError={saveError}
-          addConversation={addConversation}
-          renameConversation={renameConversation}
-          deleteConversation={deleteConversation}
-          setActiveConversationId={setActiveConversationId}
+          navigate={navigateStudioRoute}
           toggleProjectVisibility={toggleProjectVisibility}
           addMessage={addMessage}
           insertMessageAfter={insertMessageAfter}
