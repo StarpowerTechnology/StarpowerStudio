@@ -1,18 +1,12 @@
-import { useEffect, useRef } from 'react'
-import { ArrowDown, ArrowUp, Download, Edit3, Plus, Send, Share2, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowDown, ArrowUp, Download, Edit3, Menu, Plus, Send, Share2, Trash2, X } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
+import { StudioSidebar, type StudioRoute } from '../components/studio/StudioSidebar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Textarea } from '../components/ui/textarea'
-import type { Conversation, DatasetMessage, Project, Role, StatsMode } from '../lib/studio-data'
+import type { Conversation, DatasetMessage, Project, Role } from '../lib/studio-data'
 import { cn } from '../lib/utils'
-
-type DatasetStats = {
-  totalCharacters: number
-  totalWords: number
-  words: [string, number][]
-  letters: [string, number][]
-}
 
 type DatasetEditorPageProps = {
   activeProject: Project
@@ -21,15 +15,9 @@ type DatasetEditorPageProps = {
   setNextRole: (role: Role) => void
   draft: string
   setDraft: (draft: string) => void
-  stats: DatasetStats
-  statsMode: StatsMode
-  setStatsMode: (mode: StatsMode) => void
   saveStatus: string
   saveError: string
-  addConversation: () => void
-  renameConversation: (conversationId: string) => void
-  deleteConversation: (conversationId: string) => void
-  setActiveConversationId: (conversationId: string) => void
+  navigate: (route: StudioRoute) => void
   toggleProjectVisibility: (projectId: string, isPublic: boolean) => void
   addMessage: () => void
   insertMessageAfter: (messageId: string) => void
@@ -46,15 +34,9 @@ export function DatasetEditorPage({
   setNextRole,
   draft,
   setDraft,
-  stats,
-  statsMode,
-  setStatsMode,
   saveStatus,
   saveError,
-  addConversation,
-  renameConversation,
-  deleteConversation,
-  setActiveConversationId,
+  navigate,
   toggleProjectVisibility,
   addMessage,
   insertMessageAfter,
@@ -64,84 +46,119 @@ export function DatasetEditorPage({
   exportJsonl,
 }: DatasetEditorPageProps) {
   const messageEndRef = useRef<HTMLDivElement>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [activeConversation.id, activeConversation.messages.length])
 
+  useEffect(() => {
+    if (!sidebarOpen) return
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setSidebarOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [sidebarOpen])
+
   return (
-    <section className="grid h-screen min-h-[780px] grid-rows-[auto_1fr_auto]">
-      <header className="flex flex-col gap-4 border-b border-white/20 p-5 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-sm uppercase text-white/50">Dataset Editor</p>
-          <h2 className="text-2xl font-semibold">{activeProject.name}</h2>
+    <section className="grid h-dvh min-h-0 grid-rows-[auto_1fr_auto] overflow-hidden bg-black">
+      <header className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 border-b border-white/20 p-3 sm:p-5">
+        <Button
+          className="mt-1"
+          variant="ghost"
+          size="icon"
+          onClick={() => setSidebarOpen(true)}
+          aria-label="open navigation"
+          aria-controls="dataset-navigation-sidebar"
+          aria-expanded={sidebarOpen}
+          aria-haspopup="dialog"
+        >
+          <Menu />
+        </Button>
+        <div className="min-w-0">
+          <div className="inline-block max-w-full rounded-md border border-white/35 px-3 py-2 sm:px-4">
+            <h1 className="truncate text-xl font-semibold sm:text-2xl">{activeProject.name}</h1>
+          </div>
           <p className={cn('mt-2 text-sm', saveError ? 'text-red-300' : 'text-white/50')}>
             {saveError || saveStatus}
           </p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="grid shrink-0 gap-2 sm:flex sm:gap-3">
           <Button
+            className="px-3"
             variant={activeProject.isPublic ? 'default' : 'outline'}
             onClick={() => toggleProjectVisibility(activeProject.id, !activeProject.isPublic)}
           >
-            <Share2 /> {activeProject.isPublic ? 'Public' : 'Private'}
+            <Share2 /> <span>{activeProject.isPublic ? 'Public' : 'Private'}</span>
           </Button>
-          <Button onClick={exportJsonl}>
-            <Download /> Export JSONL
+          <Button className="px-3" onClick={exportJsonl}>
+            <Download /> <span>Export JSONL</span>
           </Button>
         </div>
       </header>
 
-      <div className="grid min-h-0 grid-cols-1 lg:grid-cols-[240px_1fr_280px]">
-        <ConversationPanel
-          conversations={activeProject.conversations}
-          activeConversationId={activeConversation.id}
-          addConversation={addConversation}
-          renameConversation={renameConversation}
-          deleteConversation={deleteConversation}
-          setActiveConversationId={setActiveConversationId}
-        />
-
-        <div className="min-h-0 overflow-y-auto border-white/20 p-5 lg:border-x">
-          <div className="grid gap-5">
-            {activeConversation.messages.length === 0 && (
-              <Card className="border-dashed p-8 text-center text-white/60">
-                Start this conversation with the input bar below.
-              </Card>
-            )}
-            {activeConversation.messages.map((message, index) => (
-              <MessageCard
-                key={message.id}
-                message={message}
-                isFirst={index === 0}
-                isLast={index === activeConversation.messages.length - 1}
-                insertMessageAfter={insertMessageAfter}
-                updateMessage={updateMessage}
-                deleteMessage={deleteMessage}
-                moveMessage={moveMessage}
-              />
-            ))}
-            <div ref={messageEndRef} />
-          </div>
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40">
+          <button
+            className="absolute inset-0 bg-black/70"
+            type="button"
+            aria-label="close navigation"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <aside
+            id="dataset-navigation-sidebar"
+            className="relative z-10 h-full w-[min(82vw,320px)] border-r border-white/25 bg-black shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+          >
+            <div className="flex justify-end p-3">
+              <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)} aria-label="close sidebar">
+                <X />
+              </Button>
+            </div>
+            <StudioSidebar
+              activeRoute="dataset-editor"
+              className="h-[calc(100%-60px)] min-h-0 border-0 pt-0 md:min-h-0"
+              navigate={navigate}
+              onNavigate={() => setSidebarOpen(false)}
+            />
+          </aside>
         </div>
+      )}
 
-        <StatsPanel stats={stats} statsMode={statsMode} setStatsMode={setStatsMode} />
-      </div>
+      <main className="min-h-0 overflow-y-auto px-5 py-6 sm:px-10 lg:px-16">
+        <div className="mx-auto grid min-h-full w-full max-w-6xl content-start gap-8 pb-6 sm:gap-10 lg:gap-12">
+          {activeConversation.messages.length === 0 && (
+            <Card className="mx-auto w-full max-w-2xl border-dashed p-8 text-center text-white/60">
+              Start this conversation with the input bar below.
+            </Card>
+          )}
+          {activeConversation.messages.map((message, index) => (
+            <MessageCard
+              key={message.id}
+              message={message}
+              isFirst={index === 0}
+              isLast={index === activeConversation.messages.length - 1}
+              insertMessageAfter={insertMessageAfter}
+              updateMessage={updateMessage}
+              deleteMessage={deleteMessage}
+              moveMessage={moveMessage}
+            />
+          ))}
+          <div ref={messageEndRef} />
+        </div>
+      </main>
 
       <footer className="border-t border-white/20 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row">
-          <Select value={nextRole} onValueChange={(value) => setNextRole(value as Role)}>
-            <SelectTrigger className="lg:w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="user">user</SelectItem>
-              <SelectItem value="assistant">assistant</SelectItem>
-              <SelectItem value="system">system</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="mx-auto grid min-h-28 max-w-4xl grid-cols-[1fr_auto] grid-rows-[1fr_auto] gap-3 rounded-md border border-white/35 p-3">
           <Textarea
-            className="min-h-14 flex-1 resize-none"
+            className="col-span-2 min-h-20 resize-none border-0 p-0 text-base focus-visible:ring-0 sm:text-lg"
             placeholder="type here"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -152,74 +169,22 @@ export function DatasetEditorPage({
               }
             }}
           />
-          <Button className="h-14 lg:w-16" onClick={addMessage} size="icon" aria-label="send message">
+          <Select value={nextRole} onValueChange={(value) => setNextRole(value as Role)}>
+            <SelectTrigger className="w-28 shrink-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="user">user</SelectItem>
+              <SelectItem value="assistant">assistant</SelectItem>
+              <SelectItem value="system">system</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button className="justify-self-end border-0 bg-black text-white hover:bg-black hover:text-white" onClick={addMessage} size="icon" aria-label="send message">
             <Send />
           </Button>
         </div>
       </footer>
     </section>
-  )
-}
-
-type ConversationPanelProps = {
-  conversations: Conversation[]
-  activeConversationId: string
-  addConversation: () => void
-  renameConversation: (conversationId: string) => void
-  deleteConversation: (conversationId: string) => void
-  setActiveConversationId: (conversationId: string) => void
-}
-
-function ConversationPanel({
-  conversations,
-  activeConversationId,
-  addConversation,
-  renameConversation,
-  deleteConversation,
-  setActiveConversationId,
-}: ConversationPanelProps) {
-  return (
-    <aside className="min-h-0 overflow-y-auto border-b border-white/20 p-4 lg:border-b-0">
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <h3 className="font-semibold">Conversations</h3>
-        <Button variant="outline" size="icon" onClick={addConversation} aria-label="new conversation">
-          <Plus />
-        </Button>
-      </div>
-      <div className="grid gap-2">
-        {conversations.map((conversation) => (
-          <div
-            key={conversation.id}
-            className={cn(
-              'rounded-md border border-white/20 p-3',
-              conversation.id === activeConversationId && 'border-white bg-white/10',
-            )}
-          >
-            <button
-              className="mb-3 w-full text-left text-sm font-medium"
-              type="button"
-              onClick={() => setActiveConversationId(conversation.id)}
-            >
-              {conversation.title}
-            </button>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="icon" onClick={() => renameConversation(conversation.id)} aria-label="rename">
-                <Edit3 />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => deleteConversation(conversation.id)}
-                aria-label="delete conversation"
-                disabled={conversations.length === 1}
-              >
-                <Trash2 />
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </aside>
   )
 }
 
@@ -242,97 +207,49 @@ function MessageCard({
   deleteMessage,
   moveMessage,
 }: MessageCardProps) {
-  return (
-    <Card className={cn('max-w-3xl', message.role === 'assistant' && 'ml-auto border-white/60')}>
-      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-3">
-        <Select value={message.role} onValueChange={(value) => updateMessage(message.id, { role: value as Role })}>
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="user">user</SelectItem>
-            <SelectItem value="assistant">assistant</SelectItem>
-            <SelectItem value="system">system</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" size="icon" onClick={() => insertMessageAfter(message.id)} aria-label="insert message">
-            <Plus />
-          </Button>
-          <Button variant="ghost" size="icon" aria-label="edit message">
-            <Edit3 />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => moveMessage(message.id, -1)} disabled={isFirst} aria-label="move up">
-            <ArrowUp />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => moveMessage(message.id, 1)} disabled={isLast} aria-label="move down">
-            <ArrowDown />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => deleteMessage(message.id)} aria-label="delete message">
-            <Trash2 />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Textarea
-          className="resize-y border-white/20"
-          value={message.content}
-          placeholder="write message"
-          onChange={(event) => updateMessage(message.id, { content: event.target.value })}
-        />
-      </CardContent>
-    </Card>
-  )
-}
-
-type StatsPanelProps = {
-  stats: DatasetStats
-  statsMode: StatsMode
-  setStatsMode: (mode: StatsMode) => void
-}
-
-function StatsPanel({ stats, statsMode, setStatsMode }: StatsPanelProps) {
-  const usage = statsMode === 'letters' ? stats.letters : stats.words
+  const alignment = message.role === 'assistant' ? 'justify-self-end' : 'justify-self-start'
 
   return (
-    <aside className="min-h-0 overflow-y-auto p-4">
-      <h3 className="mb-4 font-semibold">Stats</h3>
-      <div className="mb-4 grid grid-cols-2 gap-3">
-        <Card className="p-3">
-          <p className="text-xs uppercase text-white/50">Characters</p>
-          <p className="text-2xl font-semibold">{stats.totalCharacters}</p>
-        </Card>
-        <Card className="p-3">
-          <p className="text-xs uppercase text-white/50">Words</p>
-          <p className="text-2xl font-semibold">{stats.totalWords}</p>
-        </Card>
+    <div className={cn('grid w-[min(82vw,520px)] gap-2', alignment)}>
+      <Card className={cn('border-white/45', message.role === 'assistant' && 'border-white/60')}>
+        <CardHeader className="pb-3">
+          <Select value={message.role} onValueChange={(value) => updateMessage(message.id, { role: value as Role })}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="user">user</SelectItem>
+              <SelectItem value="assistant">assistant</SelectItem>
+              <SelectItem value="system">system</SelectItem>
+            </SelectContent>
+          </Select>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            className="min-h-28 resize-y border-white/20 text-base"
+            value={message.content}
+            placeholder="write message"
+            onChange={(event) => updateMessage(message.id, { content: event.target.value })}
+          />
+        </CardContent>
+      </Card>
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" size="icon" onClick={() => insertMessageAfter(message.id)} aria-label="insert message">
+          <Plus />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={() => moveMessage(message.id, -1)} disabled={isFirst} aria-label="move up">
+          <ArrowUp />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={() => moveMessage(message.id, 1)} disabled={isLast} aria-label="move down">
+          <ArrowDown />
+        </Button>
+        <Button variant="ghost" size="icon" aria-label="edit message">
+          <Edit3 />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={() => deleteMessage(message.id)} aria-label="delete message">
+          <Trash2 />
+        </Button>
       </div>
-      <Select value={statsMode} onValueChange={(value) => setStatsMode(value as StatsMode)}>
-        <SelectTrigger className="mb-4">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="words">words</SelectItem>
-          <SelectItem value="letters">letters</SelectItem>
-          <SelectItem value="bpe">BPE</SelectItem>
-        </SelectContent>
-      </Select>
-      {statsMode === 'bpe' ? (
-        <Card className="p-4 text-sm text-white/60">BPE/token-style counting placeholder.</Card>
-      ) : (
-        <Card className="p-3">
-          <div className="mb-3 text-sm font-medium">{statsMode === 'letters' ? 'Letter usage' : 'Word usage'}</div>
-          <div className="grid max-h-80 gap-2 overflow-y-auto pr-1 text-sm">
-            {usage.length === 0 && <p className="text-white/50">No usage yet.</p>}
-            {usage.slice(0, 60).map(([item, count]) => (
-              <div key={item} className="flex items-center justify-between border-b border-white/10 pb-1">
-                <span className="truncate">{item}</span>
-                <span className="text-white/60">{count}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-    </aside>
+    </div>
   )
 }
