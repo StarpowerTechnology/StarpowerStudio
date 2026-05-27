@@ -105,6 +105,10 @@ function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       setAuthError('')
+      // Set page to home when user logs in
+      if (session?.user) {
+        setPage('home')
+      }
     })
 
     return () => subscription.unsubscribe()
