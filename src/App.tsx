@@ -53,6 +53,16 @@ const fallbackPublicDatasets = [
   { name: 'Spaceman Dataset', creator: 'Spaceman' },
 ]
 
+const STUDIO_PATH = '/studio'
+
+function isStudioPath() {
+  return window.location.pathname.replace(/\/+$/, '') === STUDIO_PATH
+}
+
+function getInitialPage() {
+  return isStudioPath() ? 'editor' : 'home'
+}
+
 function getAllText(projects: Project[]) {
   return projects
     .flatMap((project) => project.conversations)
@@ -79,7 +89,7 @@ function App() {
   const [authError, setAuthError] = useState('')
   const [saveError, setSaveError] = useState('')
   const [saveStatus, setSaveStatus] = useState('Saved')
-  const [page, setPage] = useState<Page>('home')
+  const [page, setPage] = useState<Page>(() => getInitialPage())
   const [placeholderTitle, setPlaceholderTitle] = useState('')
   const [projects, setProjects] = useState<Project[]>(starterProjects)
   const [publicProjects, setPublicProjects] = useState(fallbackPublicDatasets)
@@ -90,6 +100,16 @@ function App() {
   const [statsMode, setStatsMode] = useState<StatsMode>('words')
   const dataReadyRef = useRef(false)
 
+  function setAppPage(nextPage: Page, historyMode: 'push' | 'replace' = 'push') {
+    setPage(nextPage)
+
+    const nextPath = nextPage === 'editor' ? STUDIO_PATH : '/'
+    if (window.location.pathname === nextPath) return
+
+    const method = historyMode === 'replace' ? 'replaceState' : 'pushState'
+    window.history[method](null, '', nextPath)
+  }
+
   useEffect(() => {
     if (!supabase) {
       setAuthLoading(false)
@@ -99,9 +119,8 @@ function App() {
     supabase.auth.getSession().then(({ data }) => {
       const session = data.session
       setUser(session?.user ?? null)
-      // If user exists, set page to home after auth loads
       if (session?.user) {
-        setPage('home')
+        setPage(getInitialPage())
       }
       setAuthLoading(false)
     })
@@ -111,16 +130,23 @@ function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       setAuthError('')
-      // Set page to home when user logs in
       if (session?.user) {
-        setPage('home')
+        setPage(getInitialPage())
       } else {
-        // Reset page when signing out
         setPage('home')
       }
     })
 
     return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    function handlePopState() {
+      setPage(getInitialPage())
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
   useEffect(() => {
@@ -238,7 +264,7 @@ function App() {
     if (!project) return
     setActiveProjectId(project.id)
     setActiveConversationId(project.conversations[0]?.id ?? '')
-    setPage('editor')
+    setAppPage('editor')
   }
 
   function addConversation() {
@@ -346,7 +372,7 @@ function App() {
     setProjects((currentProjects) => [...currentProjects, project])
     setActiveProjectId(project.id)
     setActiveConversationId(project.conversations[0].id)
-    setPage('editor')
+    setAppPage('editor')
   }
 
   function exportJsonl() {
@@ -390,7 +416,7 @@ function App() {
       email,
       password,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: `${window.location.origin}${isStudioPath() ? STUDIO_PATH : ''}`,
       },
     })
     if (error) {
@@ -406,7 +432,7 @@ function App() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}${isStudioPath() ? STUDIO_PATH : ''}`,
       },
     })
     if (error) setAuthError(error.message)
@@ -416,7 +442,7 @@ function App() {
     if (!supabase) return
     await supabase.auth.signOut()
     setProjects(starterProjects)
-    setPage('home')
+    setAppPage('home', 'replace')
   }
 
   if (!isSupabaseConfigured) {
@@ -441,14 +467,14 @@ function App() {
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[250px_1fr]">
-        <Sidebar page={page} setPage={setPage} />
+        <Sidebar page={page} setPage={setAppPage} />
         <main className="min-w-0 border-white/20 md:border-l">
           {page === 'home' && (
             <HomeScreen
               openEditor={() => openEditor()}
               openPlaceholder={(title) => {
                 setPlaceholderTitle(title)
-                setPage('placeholder')
+                setAppPage('placeholder')
               }}
             />
           )}
