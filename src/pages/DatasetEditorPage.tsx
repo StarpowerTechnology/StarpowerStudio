@@ -19,6 +19,7 @@ type DatasetEditorPageProps = {
   saveStatus: string
   saveError: string
   navigate: (route: StudioRoute) => void
+  renameProject: (projectId: string, name: string) => void
   publishProject: (
     projectId: string,
     details: { name: string; description: string; isPublic: boolean },
@@ -41,6 +42,7 @@ export function DatasetEditorPage({
   saveStatus,
   saveError,
   navigate,
+  renameProject,
   publishProject,
   addMessage,
   insertMessageAfter,
@@ -111,9 +113,20 @@ export function DatasetEditorPage({
           <Menu />
         </Button>
         <div className="min-w-0">
-          <div className="inline-block max-w-full rounded-md border border-white/35 px-3 py-2 sm:px-4">
-            <h1 className="truncate text-xl font-semibold sm:text-2xl">{activeProject.name}</h1>
-          </div>
+          <Input
+            aria-label="Project name"
+            className="h-auto w-[min(100%,32rem)] rounded-md border-white/35 px-3 py-2 text-xl font-semibold sm:px-4 sm:text-2xl"
+            value={activeProject.name}
+            onChange={(event) => renameProject(activeProject.id, event.target.value)}
+            onBlur={(event) => {
+              const name = event.target.value.trim()
+              if (name) {
+                renameProject(activeProject.id, name)
+              } else {
+                renameProject(activeProject.id, 'Untitled Dataset')
+              }
+            }}
+          />
           <p className={cn('mt-2 text-sm', saveError ? 'text-red-300' : 'text-white/50')}>
             {saveError || saveStatus}
           </p>

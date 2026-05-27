@@ -436,6 +436,12 @@ function App() {
     navigateRoute('dataset-editor')
   }
 
+  function renameProject(projectId: string, name: string) {
+    setProjects((currentProjects) =>
+      currentProjects.map((project) => (project.id === projectId ? { ...project, name } : project)),
+    )
+  }
+
   function exportJsonl() {
     if (!activeProject) return
     const lines = activeProject.conversations.map((conversation) =>
@@ -614,6 +620,7 @@ function App() {
           saveStatus={saveStatus}
           saveError={saveError}
           navigate={navigateStudioRoute}
+          renameProject={renameProject}
           publishProject={publishProject}
           addMessage={addMessage}
           insertMessageAfter={insertMessageAfter}
