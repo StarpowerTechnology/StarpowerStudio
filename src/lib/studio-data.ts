@@ -1,7 +1,6 @@
 import type { User } from '@supabase/supabase-js'
 import { requireSupabase } from './supabase'
 
-export type Page = 'home' | 'public' | 'projects' | 'editor' | 'account' | 'placeholder'
 export type Role = 'user' | 'assistant' | 'system'
 export type StatsMode = 'words' | 'letters' | 'bpe'
 
