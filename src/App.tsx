@@ -113,6 +113,7 @@ function countUsage(items: string[]) {
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
+  const [skipAuth, setSkipAuth] = useState(false)
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured)
   const [dataLoading, setDataLoading] = useState(false)
   const [authError, setAuthError] = useState('')
@@ -127,6 +128,8 @@ function App() {
   const [draft, setDraft] = useState('')
   const [statsMode, setStatsMode] = useState<StatsMode>('words')
   const dataReadyRef = useRef(false)
+  const skipAuthRef = useRef(false)
+  const canUseStudio = Boolean(user) || skipAuth
 
   function navigateRoute(nextRoute: AppRoute, historyMode: 'push' | 'replace' = 'push') {
     setRoute(nextRoute)
@@ -197,7 +200,7 @@ function App() {
         if (getAppRoute() === 'login') {
           navigateRoute('studio', 'replace')
         }
-      } else if (isStudioRoute(getAppRoute())) {
+      } else if (!skipAuthRef.current && isStudioRoute(getAppRoute())) {
         navigateRoute('login', 'replace')
       }
     })
@@ -218,7 +221,7 @@ function App() {
     if (authLoading) return
 
     const timeout = window.setTimeout(() => {
-      if (!user && isStudioRoute(route)) {
+      if (!canUseStudio && isStudioRoute(route)) {
         navigateRoute('login', 'replace')
       }
       if (user && route === 'login') {
@@ -227,7 +230,7 @@ function App() {
     }, 0)
 
     return () => window.clearTimeout(timeout)
-  }, [authLoading, route, user])
+  }, [authLoading, canUseStudio, route, user])
 
   useEffect(() => {
     if (!user) {
@@ -485,8 +488,17 @@ function App() {
       setAuthError(error.message)
       return
     }
+    skipAuthRef.current = false
+    setSkipAuth(false)
     setUser(data.user)
-    navigateRoute('studio', 'replace')
+    navigateRoute('studio')
+  }
+
+  function handleSkipLogin() {
+    setAuthError('')
+    skipAuthRef.current = true
+    setSkipAuth(true)
+    navigateRoute('studio')
   }
 
   async function handleEmailSignup(email: string, password: string) {
@@ -521,6 +533,8 @@ function App() {
   async function handleSignOut() {
     if (!supabase) return
     await supabase.auth.signOut()
+    skipAuthRef.current = false
+    setSkipAuth(false)
     setProjects(starterProjects)
     navigateRoute('landing', 'replace')
   }
@@ -540,15 +554,16 @@ function App() {
         onEmailLogin={handleEmailLogin}
         onEmailSignup={handleEmailSignup}
         onGoogleLogin={handleGoogleLogin}
+        onSkipLogin={handleSkipLogin}
       />
     )
   }
 
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseConfigured && !skipAuth) {
     return <SetupScreen />
   }
 
-  if (!user) {
+  if (!canUseStudio) {
     return <LoadingScreen label="Opening login..." />
   }
 
@@ -591,7 +606,7 @@ function App() {
       {route === 'jupyter-notebook' && <JupyterNotebookPage />}
       {route === 'public' && <PublicPage datasets={publicProjects} />}
       {route === 'projects' && <ProjectsPage projects={projects} openProject={openEditor} createProject={createProject} />}
-      {route === 'account' && <AccountPage user={user} saveStatus={saveStatus} onSignOut={handleSignOut} />}
+      {route === 'account' && user && <AccountPage user={user} saveStatus={saveStatus} onSignOut={handleSignOut} />}
       {route === 'image-database' && (
         <StudioPlaceholderPage title="IMG Database" detail="This studio tool is a future workspace." />
       )}
