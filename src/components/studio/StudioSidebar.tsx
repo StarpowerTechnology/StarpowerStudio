@@ -13,10 +13,12 @@ export type StudioRoute =
 
 type StudioSidebarProps = {
   activeRoute: StudioRoute
+  className?: string
   navigate: (route: StudioRoute) => void
+  onNavigate?: () => void
 }
 
-export function StudioSidebar({ activeRoute, navigate }: StudioSidebarProps) {
+export function StudioSidebar({ activeRoute, className, navigate, onNavigate }: StudioSidebarProps) {
   const navItems = [
     { route: 'studio' as StudioRoute, label: 'Home', icon: Home },
     { route: 'dataset-editor' as StudioRoute, label: 'Dataset Editor', icon: Database },
@@ -26,10 +28,13 @@ export function StudioSidebar({ activeRoute, navigate }: StudioSidebarProps) {
   ]
 
   return (
-    <aside className="flex min-h-28 flex-col border-b border-white/20 p-5 md:min-h-screen md:border-b-0">
+    <aside className={cn('flex min-h-28 flex-col border-b border-white/20 p-5 md:min-h-screen md:border-b-0', className)}>
       <button
         className="mb-8 flex items-center gap-3 rounded-md text-left transition hover:bg-white/5"
-        onClick={() => navigate('studio')}
+        onClick={() => {
+          navigate('studio')
+          onNavigate?.()
+        }}
         type="button"
       >
         <img className="h-10 w-10 object-contain" src="/brand/starpower-logo.png" alt="" />
@@ -49,7 +54,10 @@ export function StudioSidebar({ activeRoute, navigate }: StudioSidebarProps) {
                 'flex items-center gap-3 rounded-md border border-transparent px-3 py-3 text-left text-lg transition hover:border-white/30 hover:bg-white/5',
                 activeRoute === item.route && 'border-white/40 bg-white/10',
               )}
-              onClick={() => navigate(item.route)}
+              onClick={() => {
+                navigate(item.route)
+                onNavigate?.()
+              }}
               type="button"
             >
               <Icon className="h-6 w-6" />
@@ -63,7 +71,10 @@ export function StudioSidebar({ activeRoute, navigate }: StudioSidebarProps) {
           'mt-6 flex items-center gap-3 rounded-md border border-transparent px-3 py-3 text-left text-lg transition hover:border-white/30 hover:bg-white/5 md:mt-auto',
           activeRoute === 'account' && 'border-white/40 bg-white/10',
         )}
-        onClick={() => navigate('account')}
+        onClick={() => {
+          navigate('account')
+          onNavigate?.()
+        }}
         type="button"
       >
         <UserCircle className="h-8 w-8" />
