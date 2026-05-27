@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { LoadingOverlay, LoadingScreen } from './components/common/LoadingScreen'
-import { SetupScreen } from './components/common/SetupScreen'
 import { StudioLayout } from './components/studio/StudioLayout'
 import type { StudioRoute } from './components/studio/StudioSidebar'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
+import {
+  checkUsernameAvailable,
+  fetchProfile,
+  normalizeUsername,
+  resolveLoginEmail,
+  saveProfile,
+  type Profile,
+} from './lib/account-data'
 import {
   createStarterProjects,
   fetchOwnedProjects,
@@ -26,7 +33,6 @@ import { AccountPage } from './pages/AccountPage'
 import { DatasetEditorPage } from './pages/DatasetEditorPage'
 import { JupyterNotebookPage } from './pages/JupyterNotebookPage'
 import { LandingPage } from './pages/LandingPage'
-import { LoginPage } from './pages/LoginPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { PublicPage } from './pages/PublicPage'
 import { StudioHomePage } from './pages/StudioHomePage'
@@ -39,11 +45,10 @@ const fallbackPublicDatasets = [
   { name: 'Spaceman Dataset', creator: 'Spaceman' },
 ]
 
-type AppRoute = 'landing' | 'login' | StudioRoute
+type AppRoute = 'landing' | StudioRoute
 
 const ROUTE_PATHS: Record<AppRoute, string> = {
   landing: '/',
-  login: '/login',
   studio: '/studio',
   'dataset-editor': '/dataset-editor',
   'jupyter-notebook': '/jupyter-notebook',
@@ -60,16 +65,13 @@ function normalizePath(pathname: string) {
 
 function getAppRoute(): AppRoute {
   const path = normalizePath(window.location.pathname)
+  if (path === '/login') return 'account'
 
   for (const [route, routePath] of Object.entries(ROUTE_PATHS) as Array<[AppRoute, string]>) {
     if (path === routePath) return route
   }
 
   return 'landing'
-}
-
-function isStudioRoute(route: AppRoute): route is StudioRoute {
-  return route !== 'landing' && route !== 'login'
 }
 
 function getSessionFromUrlHash() {
@@ -113,10 +115,11 @@ function countUsage(items: string[]) {
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
-  const [skipAuth, setSkipAuth] = useState(false)
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured)
   const [dataLoading, setDataLoading] = useState(false)
   const [authError, setAuthError] = useState('')
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [profileError, setProfileError] = useState('')
   const [saveError, setSaveError] = useState('')
   const [saveStatus, setSaveStatus] = useState('Saved')
   const [route, setRoute] = useState<AppRoute>(() => getAppRoute())
@@ -128,8 +131,6 @@ function App() {
   const [draft, setDraft] = useState('')
   const [statsMode, setStatsMode] = useState<StatsMode>('words')
   const dataReadyRef = useRef(false)
-  const skipAuthRef = useRef(false)
-  const canUseStudio = Boolean(user) || skipAuth
 
   function navigateRoute(nextRoute: AppRoute, historyMode: 'push' | 'replace' = 'push') {
     setRoute(nextRoute)
@@ -169,7 +170,7 @@ function App() {
 
           setUser(data.session?.user ?? null)
           if (data.session?.user) {
-            navigateRoute('studio', 'replace')
+            navigateRoute('account', 'replace')
           }
           clearUrlHash()
           return
@@ -196,16 +197,22 @@ function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       setAuthError('')
-      if (session?.user) {
-        if (getAppRoute() === 'login') {
-          navigateRoute('studio', 'replace')
-        }
-      } else if (!skipAuthRef.current && isStudioRoute(getAppRoute())) {
-        navigateRoute('login', 'replace')
+      if (!session?.user) {
+        setProfile(null)
+        setProfileError('')
+      }
+      if (session?.user && getAppRoute() === 'landing') {
+        navigateRoute('studio', 'replace')
       }
     })
 
     return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    if (normalizePath(window.location.pathname) === '/login') {
+      window.history.replaceState(null, '', ROUTE_PATHS.account)
+    }
   }, [])
 
   useEffect(() => {
@@ -218,19 +225,49 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (authLoading) return
+    if (!user || !isSupabaseConfigured) {
+      return
+    }
 
-    const timeout = window.setTimeout(() => {
-      if (!canUseStudio && isStudioRoute(route)) {
-        navigateRoute('login', 'replace')
-      }
-      if (user && route === 'login') {
-        navigateRoute('studio', 'replace')
-      }
-    }, 0)
+    let canceled = false
+    const currentUser = user
 
-    return () => window.clearTimeout(timeout)
-  }, [authLoading, canUseStudio, route, user])
+    async function loadProfile() {
+      setProfileError('')
+      try {
+        const currentProfile = await fetchProfile(currentUser.id)
+        if (canceled) return
+
+        if (currentProfile) {
+          setProfile(currentProfile)
+          return
+        }
+
+        const metadataUsername = normalizeUsername(String(currentUser.user_metadata?.username ?? ''))
+        if (metadataUsername) {
+          const { profile: savedProfile, user: updatedUser } = await saveProfile(currentUser, {
+            username: metadataUsername,
+            email: currentUser.email ?? '',
+          })
+          if (canceled) return
+          setProfile(savedProfile)
+          setUser(updatedUser)
+          return
+        }
+
+        setProfile(null)
+      } catch (error) {
+        if (canceled) return
+        setProfileError(error instanceof Error ? error.message : 'Could not load your profile.')
+      }
+    }
+
+    loadProfile()
+
+    return () => {
+      canceled = true
+    }
+  }, [user])
 
   useEffect(() => {
     if (!user) {
@@ -480,91 +517,124 @@ function App() {
     )
   }
 
-  async function handleEmailLogin(email: string, password: string) {
-    if (!supabase) return
+  async function handleUsernameCheck(username: string) {
+    if (!supabase) {
+      throw new Error('Supabase is not configured.')
+    }
+
+    return checkUsernameAvailable(username, user?.id)
+  }
+
+  async function handleEmailLogin(identifier: string, password: string) {
+    if (!supabase) {
+      setAuthError('Supabase is not configured.')
+      return
+    }
     setAuthError('')
+    const email = await resolveLoginEmail(identifier)
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       setAuthError(error.message)
       return
     }
-    skipAuthRef.current = false
-    setSkipAuth(false)
     setUser(data.user)
-    navigateRoute('studio')
+    navigateRoute('account')
   }
 
-  function handleSkipLogin() {
+  async function handleEmailSignup(username: string, email: string, password: string) {
+    if (!supabase) {
+      setAuthError('Supabase is not configured.')
+      return
+    }
     setAuthError('')
-    skipAuthRef.current = true
-    setSkipAuth(true)
-    navigateRoute('studio')
-  }
+    const normalizedUsername = normalizeUsername(username)
+    const usernameAvailable = await checkUsernameAvailable(normalizedUsername)
+    if (!usernameAvailable) {
+      setAuthError('Username is taken.')
+      return
+    }
 
-  async function handleEmailSignup(email: string, password: string) {
-    if (!supabase) return
-    setAuthError('')
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}${ROUTE_PATHS.studio}`,
+        data: { username: normalizedUsername },
+        emailRedirectTo: `${window.location.origin}${ROUTE_PATHS.account}`,
       },
     })
     if (error) {
       setAuthError(error.message)
       return
     }
+
+    if (data.user && data.session) {
+      const { profile: savedProfile, user: updatedUser } = await saveProfile(data.user, {
+        username: normalizedUsername,
+        email,
+      })
+      setProfile(savedProfile)
+      setUser(updatedUser)
+      navigateRoute('account')
+      return
+    }
+
     setAuthError('Check your email to confirm your account, then log in.')
   }
 
   async function handleGoogleLogin() {
-    if (!supabase) return
+    if (!supabase) {
+      setAuthError('Supabase is not configured.')
+      return
+    }
     setAuthError('')
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}${ROUTE_PATHS.studio}`,
+        redirectTo: `${window.location.origin}${ROUTE_PATHS.account}`,
       },
     })
     if (error) setAuthError(error.message)
   }
 
+  async function handleSaveUsername(username: string) {
+    if (!user) return
+    setProfileError('')
+
+    try {
+      const normalizedUsername = normalizeUsername(username)
+      const usernameAvailable = await checkUsernameAvailable(normalizedUsername, user.id)
+      if (!usernameAvailable) {
+        setProfileError('Username is taken.')
+        return
+      }
+
+      const { profile: savedProfile, user: updatedUser } = await saveProfile(user, {
+        username: normalizedUsername,
+        email: user.email ?? '',
+        bio: profile?.bio ?? '',
+        photoUrl: profile?.photoUrl ?? '',
+      })
+      setProfile(savedProfile)
+      setUser(updatedUser)
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Could not save username.')
+    }
+  }
+
   async function handleSignOut() {
     if (!supabase) return
     await supabase.auth.signOut()
-    skipAuthRef.current = false
-    setSkipAuth(false)
+    setProfile(null)
     setProjects(starterProjects)
-    navigateRoute('landing', 'replace')
+    navigateRoute('account', 'replace')
   }
 
   if (route === 'landing') {
-    return <LandingPage openLogin={() => navigateRoute('login')} />
+    return <LandingPage openAccount={() => navigateRoute('account')} openStudio={() => navigateRoute('studio')} />
   }
 
   if (authLoading) {
     return <LoadingScreen label="Loading account..." />
-  }
-
-  if (route === 'login') {
-    return (
-      <LoginPage
-        authError={authError}
-        onEmailLogin={handleEmailLogin}
-        onEmailSignup={handleEmailSignup}
-        onGoogleLogin={handleGoogleLogin}
-        onSkipLogin={handleSkipLogin}
-      />
-    )
-  }
-
-  if (!isSupabaseConfigured && !skipAuth) {
-    return <SetupScreen />
-  }
-
-  if (!canUseStudio) {
-    return <LoadingScreen label="Opening login..." />
   }
 
   return (
@@ -606,7 +676,21 @@ function App() {
       {route === 'jupyter-notebook' && <JupyterNotebookPage />}
       {route === 'public' && <PublicPage datasets={publicProjects} />}
       {route === 'projects' && <ProjectsPage projects={projects} openProject={openEditor} createProject={createProject} />}
-      {route === 'account' && user && <AccountPage user={user} saveStatus={saveStatus} onSignOut={handleSignOut} />}
+      {route === 'account' && (
+        <AccountPage
+          authError={authError}
+          profile={profile}
+          profileError={profileError}
+          saveStatus={saveStatus}
+          user={user}
+          onCheckUsername={handleUsernameCheck}
+          onEmailLogin={handleEmailLogin}
+          onEmailSignup={handleEmailSignup}
+          onGoogleLogin={handleGoogleLogin}
+          onSaveUsername={handleSaveUsername}
+          onSignOut={handleSignOut}
+        />
+      )}
       {route === 'image-database' && (
         <StudioPlaceholderPage title="IMG Database" detail="This studio tool is a future workspace." />
       )}

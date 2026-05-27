@@ -29,6 +29,16 @@ create table if not exists public.messages (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  username text not null unique check (username ~ '^[a-z0-9_]{3,30}$'),
+  email text not null unique,
+  bio text not null default '',
+  photo_url text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -54,9 +64,37 @@ create trigger set_messages_updated_at
 before update on public.messages
 for each row execute function public.set_updated_at();
 
+drop trigger if exists set_profiles_updated_at on public.profiles;
+create trigger set_profiles_updated_at
+before update on public.profiles
+for each row execute function public.set_updated_at();
+
 alter table public.projects enable row level security;
 alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
+alter table public.profiles enable row level security;
+
+drop policy if exists "Anyone can read profiles" on public.profiles;
+create policy "Anyone can read profiles"
+on public.profiles
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "Users can create their profile" on public.profiles;
+create policy "Users can create their profile"
+on public.profiles
+for insert
+to authenticated
+with check (id = (select auth.uid()));
+
+drop policy if exists "Users can update their profile" on public.profiles;
+create policy "Users can update their profile"
+on public.profiles
+for update
+to authenticated
+using (id = (select auth.uid()))
+with check (id = (select auth.uid()));
 
 drop policy if exists "Users can read owned or public projects" on public.projects;
 create policy "Users can read owned or public projects"

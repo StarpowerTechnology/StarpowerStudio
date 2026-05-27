@@ -27,14 +27,18 @@ export function StudioSidebar({ activeRoute, navigate }: StudioSidebarProps) {
 
   return (
     <aside className="flex min-h-28 flex-col border-b border-white/20 p-5 md:min-h-screen md:border-b-0">
-      <div className="mb-8 flex items-center gap-3">
+      <button
+        className="mb-8 flex items-center gap-3 rounded-md text-left transition hover:bg-white/5"
+        onClick={() => navigate('studio')}
+        type="button"
+      >
         <img className="h-10 w-10 object-contain" src="/brand/starpower-logo.png" alt="" />
         <div className="text-sm font-semibold uppercase leading-tight tracking-normal">
           StarPower
           <br />
           Studio
         </div>
-      </div>
+      </button>
       <nav className="grid gap-2">
         {navItems.map((item) => {
           const Icon = item.icon
