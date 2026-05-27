@@ -53,10 +53,6 @@ const fallbackPublicDatasets = [
   { name: 'Spaceman Dataset', creator: 'Spaceman' },
 ]
 
-function getAuthRedirectUrl() {
-  return import.meta.env.VITE_SITE_URL || window.location.origin
-}
-
 function getAllText(projects: Project[]) {
   return projects
     .flatMap((project) => project.conversations)
@@ -381,7 +377,7 @@ function App() {
       email,
       password,
       options: {
-        emailRedirectTo: getAuthRedirectUrl(),
+        emailRedirectTo: window.location.origin,
       },
     })
     if (error) {
@@ -397,7 +393,7 @@ function App() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: getAuthRedirectUrl(),
+        redirectTo: window.location.origin,
       },
     })
     if (error) setAuthError(error.message)
