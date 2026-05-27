@@ -7,6 +7,14 @@
     {
       "source": "/studio/:path*",
       "destination": "/index.html"
+    },
+    {
+      "source": "/login",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/login/:path*",
+      "destination": "/index.html"
     }
   ]
 }

@@ -53,14 +53,26 @@ const fallbackPublicDatasets = [
   { name: 'Spaceman Dataset', creator: 'Spaceman' },
 ]
 
+const LOGIN_PATH = '/login'
 const STUDIO_PATH = '/studio'
 
-function isStudioPath() {
-  return window.location.pathname.replace(/\/+$/, '') === STUDIO_PATH
+type AppRoute = 'landing' | 'login' | 'studio'
+
+function normalizePath(pathname: string) {
+  return pathname.replace(/\/+$/, '') || '/'
 }
 
-function getInitialPage() {
-  return isStudioPath() ? 'editor' : 'home'
+function getAppRoute(): AppRoute {
+  const path = normalizePath(window.location.pathname)
+  if (path === LOGIN_PATH) return 'login'
+  if (path === STUDIO_PATH) return 'studio'
+  return 'landing'
+}
+
+function getRoutePath(route: AppRoute) {
+  if (route === 'login') return LOGIN_PATH
+  if (route === 'studio') return STUDIO_PATH
+  return '/'
 }
 
 function getSessionFromUrlHash() {
@@ -109,7 +121,8 @@ function App() {
   const [authError, setAuthError] = useState('')
   const [saveError, setSaveError] = useState('')
   const [saveStatus, setSaveStatus] = useState('Saved')
-  const [page, setPage] = useState<Page>(() => getInitialPage())
+  const [route, setRoute] = useState<AppRoute>(() => getAppRoute())
+  const [page, setPage] = useState<Page>('home')
   const [placeholderTitle, setPlaceholderTitle] = useState('')
   const [projects, setProjects] = useState<Project[]>(starterProjects)
   const [publicProjects, setPublicProjects] = useState(fallbackPublicDatasets)
@@ -120,19 +133,30 @@ function App() {
   const [statsMode, setStatsMode] = useState<StatsMode>('words')
   const dataReadyRef = useRef(false)
 
-  function setAppPage(nextPage: Page, historyMode: 'push' | 'replace' = 'push') {
-    setPage(nextPage)
+  function navigateRoute(nextRoute: AppRoute, historyMode: 'push' | 'replace' = 'push') {
+    setRoute(nextRoute)
 
-    const nextPath = nextPage === 'editor' ? STUDIO_PATH : '/'
-    if (window.location.pathname === nextPath) return
+    if (nextRoute === 'studio') {
+      setPage('home')
+    }
+
+    const nextPath = getRoutePath(nextRoute)
+    if (normalizePath(window.location.pathname) === nextPath) return
 
     const method = historyMode === 'replace' ? 'replaceState' : 'pushState'
     window.history[method](null, '', nextPath)
   }
 
+  function setStudioPage(nextPage: Page) {
+    setPage(nextPage)
+
+    if (getAppRoute() !== 'studio') {
+      navigateRoute('studio')
+    }
+  }
+
   useEffect(() => {
     if (!supabase) {
-      setAuthLoading(false)
       return
     }
     const client = supabase
@@ -155,7 +179,7 @@ function App() {
 
           setUser(data.session?.user ?? null)
           if (data.session?.user) {
-            setPage(getInitialPage())
+            navigateRoute('studio', 'replace')
           }
           clearUrlHash()
           return
@@ -166,9 +190,6 @@ function App() {
 
         const session = data.session
         setUser(session?.user ?? null)
-        if (session?.user) {
-          setPage(getInitialPage())
-        }
       } catch (error) {
         setUser(null)
         setAuthError(error instanceof Error ? error.message : 'Could not finish sign in.')
@@ -186,9 +207,13 @@ function App() {
       setUser(session?.user ?? null)
       setAuthError('')
       if (session?.user) {
-        setPage(getInitialPage())
+        if (getAppRoute() === 'login') {
+          navigateRoute('studio', 'replace')
+        }
       } else {
-        setPage('home')
+        if (getAppRoute() === 'studio') {
+          navigateRoute('login', 'replace')
+        }
       }
     })
 
@@ -197,12 +222,27 @@ function App() {
 
   useEffect(() => {
     function handlePopState() {
-      setPage(getInitialPage())
+      setRoute(getAppRoute())
     }
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
+
+  useEffect(() => {
+    if (authLoading) return
+
+    const timeout = window.setTimeout(() => {
+      if (!user && route === 'studio') {
+        navigateRoute('login', 'replace')
+      }
+      if (user && route === 'login') {
+        navigateRoute('studio', 'replace')
+      }
+    }, 0)
+
+    return () => window.clearTimeout(timeout)
+  }, [authLoading, route, user])
 
   useEffect(() => {
     if (!user) {
@@ -319,7 +359,7 @@ function App() {
     if (!project) return
     setActiveProjectId(project.id)
     setActiveConversationId(project.conversations[0]?.id ?? '')
-    setAppPage('editor')
+    setStudioPage('editor')
   }
 
   function addConversation() {
@@ -427,7 +467,7 @@ function App() {
     setProjects((currentProjects) => [...currentProjects, project])
     setActiveProjectId(project.id)
     setActiveConversationId(project.conversations[0].id)
-    setAppPage('editor')
+    setStudioPage('editor')
   }
 
   function exportJsonl() {
@@ -461,7 +501,11 @@ function App() {
     if (!supabase) return
     setAuthError('')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) setAuthError(error.message)
+    if (error) {
+      setAuthError(error.message)
+      return
+    }
+    navigateRoute('studio', 'replace')
   }
 
   async function handleEmailSignup(email: string, password: string) {
@@ -471,7 +515,7 @@ function App() {
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}${isStudioPath() ? STUDIO_PATH : ''}`,
+        emailRedirectTo: `${window.location.origin}${STUDIO_PATH}`,
       },
     })
     if (error) {
@@ -487,7 +531,7 @@ function App() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}${isStudioPath() ? STUDIO_PATH : ''}`,
+        redirectTo: `${window.location.origin}${STUDIO_PATH}`,
       },
     })
     if (error) setAuthError(error.message)
@@ -497,18 +541,18 @@ function App() {
     if (!supabase) return
     await supabase.auth.signOut()
     setProjects(starterProjects)
-    setAppPage('home', 'replace')
+    navigateRoute('landing', 'replace')
   }
 
-  if (!isSupabaseConfigured) {
-    return <SetupScreen />
+  if (route === 'landing') {
+    return <LandingScreen openLogin={() => navigateRoute('login')} />
   }
 
   if (authLoading) {
     return <LoadingScreen label="Loading account..." />
   }
 
-  if (!user) {
+  if (route === 'login') {
     return (
       <LoginScreen
         authError={authError}
@@ -519,17 +563,25 @@ function App() {
     )
   }
 
+  if (!isSupabaseConfigured) {
+    return <SetupScreen />
+  }
+
+  if (!user) {
+    return <LoadingScreen label="Opening login..." />
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[250px_1fr]">
-        <Sidebar page={page} setPage={setAppPage} />
+        <Sidebar page={page} setPage={setStudioPage} />
         <main className="min-w-0 border-white/20 md:border-l">
           {page === 'home' && (
             <HomeScreen
               openEditor={() => openEditor()}
               openPlaceholder={(title) => {
                 setPlaceholderTitle(title)
-                setAppPage('placeholder')
+                setStudioPage('placeholder')
               }}
             />
           )}
@@ -571,6 +623,22 @@ function App() {
         </main>
       </div>
     </div>
+  )
+}
+
+function LandingScreen({ openLogin }: { openLogin: () => void }) {
+  return (
+    <main className="min-h-screen bg-black p-6 text-white">
+      <header className="flex justify-end">
+        <Button variant="outline" onClick={openLogin}>
+          Login
+        </Button>
+      </header>
+      <section className="flex min-h-[calc(100vh-96px)] flex-col items-center justify-center gap-8 text-center">
+        <h1 className="text-5xl font-semibold tracking-normal md:text-7xl">Starpower Technology</h1>
+        <img className="h-28 w-28 object-contain md:h-36 md:w-36" src="/brand/starpower-logo.png" alt="StarPower logo" />
+      </section>
+    </main>
   )
 }
 
