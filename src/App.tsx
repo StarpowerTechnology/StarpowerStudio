@@ -480,11 +480,12 @@ function App() {
   async function handleEmailLogin(email: string, password: string) {
     if (!supabase) return
     setAuthError('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       setAuthError(error.message)
       return
     }
+    setUser(data.user)
     navigateRoute('studio', 'replace')
   }
 
